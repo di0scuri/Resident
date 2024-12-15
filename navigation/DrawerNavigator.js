@@ -89,7 +89,7 @@ function NotificationsStackNavigator({ navigation }) {
 }
 
 // Main Drawer Navigator
-export default function DrawerNavigator() {
+export default function AppNavigator() {
   return (
     <NavigationContainer>
       <Drawer.Navigator
