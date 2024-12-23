@@ -10,7 +10,7 @@ import EventsResidents from '../screens/EventsResidents';
 import EventOverview from '../screens/EventOverview';
 import Notifications from '../screens/Notification';
 import NotificationDetails from '../screens/NotificationDetails';
-import SubmitRequirements from '../screens/SubmitRequirements'; // New SubmitRequirements Screen
+import SubmitRequirements from '../screens/SubmitRequirements'; // SubmitRequirements Screen
 
 const Drawer = createDrawerNavigator();
 const Stack = createStackNavigator();
@@ -42,7 +42,16 @@ function EventsStackNavigator({ navigation }) {
           ),
         }}
       />
-      <Stack.Screen name="EventOverview" component={EventOverview} options={{ title: 'Event Overview' }} />
+      <Stack.Screen
+        name="EventOverview"
+        component={EventOverview}
+        options={{ title: 'Event Overview' }}
+      />
+      <Stack.Screen
+        name="SubmitRequirements"
+        component={SubmitRequirements}
+        options={{ title: 'Submit Requirements' }}
+      />
     </Stack.Navigator>
   );
 }
@@ -78,11 +87,6 @@ function NotificationsStackNavigator({ navigation }) {
         name="NotificationDetails"
         component={NotificationDetails}
         options={{ title: 'Notification Details' }}
-      />
-      <Stack.Screen
-        name="SubmitRequirements"
-        component={SubmitRequirements}
-        options={{ title: 'Submit Requirements' }}
       />
     </Stack.Navigator>
   );

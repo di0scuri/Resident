@@ -1,111 +1,147 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import axios from 'axios';
 
 export default function SubmitRequirements({ route, navigation }) {
-  // Default requirements list passed through route params
-  const requirements = route?.params?.requirements || [
-    'Certificate of Enrollment',
-    'Certificate of Grades',
-    'Certificate of Indigency',
-    'Scanned Copy of Valid ID or School ID',
-  ];
+  const { residentId, programId } = route.params || {};
 
-  const [uploadedFiles, setUploadedFiles] = useState(
-    requirements.map((req) => ({
-      name: req,
-      file: null, // File name
-    }))
-  );
+  if (!programId) {
+    Alert.alert("Error", "Program ID is required.");
+    navigation.goBack();
+    return null;
+  }
 
-  // Check if all files are uploaded
-  const allFilesUploaded = uploadedFiles.every((file) => file.file);
+  const [requirements, setRequirements] = useState([]);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // File Picker with Reupload Confirmation
+  useEffect(() => {
+    const fetchRequirements = async () => {
+      try {
+        console.log(`Fetching requirements for programId: ${programId}`);
+        const response = await axios.get(
+          `https://brgyapp.lesterintheclouds.com/api/get_requirements.php?program_id=${programId}`
+        );
+        if (response.data.success) {
+          const fetchedRequirements = response.data.data.map((req) => ({
+            id: req.id,
+            name: req.name,
+            file: null, // Placeholder for uploaded file name
+            fileUri: null, // Placeholder for file URI
+          }));
+          console.log("Fetched Requirements:", fetchedRequirements);
+          setRequirements(fetchedRequirements);
+          setUploadedFiles(fetchedRequirements);
+        } else {
+          Alert.alert('Error', response.data.message || 'Failed to fetch requirements.');
+        }
+      } catch (error) {
+        console.error('Error fetching requirements:', error);
+        Alert.alert('Error', 'Unable to fetch requirements. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRequirements();
+  }, [programId]);
+
   const pickDocument = async (index) => {
-    const fileAlreadyUploaded = uploadedFiles[index].file;
-
-    if (fileAlreadyUploaded) {
-      Alert.alert(
-        'Replace File',
-        'Do you want to replace the existing file?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Replace', onPress: () => uploadNewFile(index) },
-        ]
-      );
-    } else {
-      uploadNewFile(index);
-    }
-  };
-
-  // Handle Document Picking
-  const uploadNewFile = async (index) => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: '*/*', // Allow all file types
-        copyToCacheDirectory: false,
+        type: '*/*',
+        copyToCacheDirectory: true,
       });
 
       if (result.type === 'success') {
         const updatedFiles = [...uploadedFiles];
-        updatedFiles[index].file = result.name; // Store file name
+        updatedFiles[index].file = result.name; // Save file name for display
+        updatedFiles[index].fileUri = result.uri; // Save file URI temporarily
         setUploadedFiles(updatedFiles);
       }
     } catch (error) {
+      console.error('Error picking document:', error);
       Alert.alert('Error', 'Unable to pick file. Please try again.');
     }
   };
 
-  // Handle Submit Confirmation
-  const handleSubmit = () => {
-    Alert.alert(
-      'Confirm Submission',
-      'Are you sure you want to submit the requirements?',
-      [
-        { text: 'Cancel', style: 'cancel' },
+  const handleSubmit = async () => {
+    try {
+      const formData = new FormData();
+      uploadedFiles.forEach((file) => {
+        if (file.fileUri) {
+          formData.append('files[]', {
+            uri: file.fileUri,
+            name: file.file,
+            type: 'application/octet-stream', // Adjust the type as needed
+          });
+          formData.append('requirement_ids[]', file.id);
+        }
+      });
+      formData.append('resident_id', residentId);
+      formData.append('program_id', programId);
+
+      const response = await axios.post(
+        'https://brgyapp.lesterintheclouds.com/api/submit_requirements.php',
+        formData,
         {
-          text: 'Submit',
-          onPress: () => {
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'NotificationList' }],
-            });
+          headers: {
+            'Content-Type': 'multipart/form-data',
           },
-        },
-      ]
-    );
+        }
+      );
+
+      if (response.data.success) {
+        Alert.alert('Success', 'Requirements submitted successfully.');
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'NotificationList' }],
+        });
+      } else {
+        Alert.alert('Error', response.data.message || 'Failed to submit requirements.');
+      }
+    } catch (error) {
+      console.error('Error submitting requirements:', error);
+      Alert.alert('Error', 'Unable to submit requirements. Please try again.');
+    }
   };
+
+  const allFilesUploaded = uploadedFiles.every((file) => file.file);
 
   return (
     <View style={styles.container}>
       <Text style={styles.header}>REQUIREMENTS</Text>
-      <FlatList
-        data={uploadedFiles}
-        keyExtractor={(item) => item.name}
-        renderItem={({ item, index }) => (
-          <View style={styles.requirementRow}>
-            <View style={styles.fileDetails}>
-              <Text style={styles.requirementName}>{item.name}:</Text>
-              {item.file && (
-                <Text style={styles.fileName}>Uploaded: {item.file}</Text>
-              )}
+      {loading ? (
+        <Text style={styles.loadingText}>Loading requirements...</Text>
+      ) : (
+        <FlatList
+          data={requirements}
+          keyExtractor={(item) => item.id.toString()}
+          renderItem={({ item, index }) => (
+            <View style={styles.requirementRow}>
+              <View style={styles.fileDetails}>
+                <Text style={styles.requirementName}>{item.name}:</Text>
+                {uploadedFiles[index]?.file && (
+                  <Text style={styles.fileName}>Selected: {uploadedFiles[index].file}</Text>
+                )}
+              </View>
+              <TouchableOpacity
+                style={styles.uploadButton}
+                onPress={() => pickDocument(index)}
+              >
+                <Text style={styles.buttonText}>
+                  {uploadedFiles[index]?.file ? 'RESELECT FILE' : 'SELECT FILE'}
+                </Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              style={styles.uploadButton}
-              onPress={() => pickDocument(index)}
-            >
-              <Text style={styles.buttonText}>
-                {item.file ? 'REUPLOAD FILE' : 'UPLOAD FILE'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      />
+          )}
+        />
+      )}
       <TouchableOpacity
         style={[styles.submitButton, !allFilesUploaded && styles.disabledButton]}
         onPress={handleSubmit}
-        disabled={!allFilesUploaded} // Disable the button if not all files are uploaded
+        disabled={!allFilesUploaded}
       >
         <Text style={styles.submitButtonText}>SUBMIT</Text>
       </TouchableOpacity>
@@ -116,6 +152,7 @@ export default function SubmitRequirements({ route, navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F4F4F4', padding: 15 },
   header: { fontSize: 20, fontWeight: 'bold', color: 'maroon', marginBottom: 10 },
+  loadingText: { fontSize: 16, color: '#555', textAlign: 'center', marginTop: 20 },
   requirementRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -142,7 +179,7 @@ const styles = StyleSheet.create({
     marginTop: 15,
   },
   disabledButton: {
-    backgroundColor: '#CCCCCC', // Greyed out button
+    backgroundColor: '#CCCCCC',
   },
   submitButtonText: {
     color: '#FFFFFF',

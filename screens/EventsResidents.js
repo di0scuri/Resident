@@ -1,46 +1,80 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, ScrollView } from 'react-native';
 import { Calendar } from 'react-native-calendars';
-import { Ionicons } from '@expo/vector-icons';
-
-const EVENTS_DATA = [
-  { id: '1', date: '2024-12-12', title: 'Community Cleanup Drive', time: '5:00 AM - 7:00 AM', location: 'Barangay Hall', participant: 'Open to all residents' },
-  { id: '2', date: '2024-12-21', title: 'Basic Computer Skills Workshop', time: '9:00 AM - 12:00 PM', location: 'Barangay Hall', participant: 'Residents aged 15 and above' },
-  { id: '3', date: '2024-12-23', title: 'Free Medical Check-Up', time: '9:00 AM - 4:00 PM', location: 'Barangay Covered Court', participant: 'Open to all residents' },
-  { id: '4', date: '2024-12-24', title: 'Christmas Party', time: '9:00 AM - 3:00 PM', location: 'Barangay Covered Court', participant: 'Residents aged 18 and above' },
-  { id: '5', date: '2024-12-31', title: "New Year's Party", time: '10:00 AM - 5:00 PM', location: 'Barangay Sports Complex', participant: 'Open to all residents' },
-];
+import axios from 'axios';
 
 export default function EventsResidents({ navigation }) {
   const today = new Date().toISOString().split('T')[0];
   const [selectedDate, setSelectedDate] = useState('');
   const [events, setEvents] = useState([]);
+  const [allEvents, setAllEvents] = useState([]);
+
+  const formatDateTime = (datetime) => {
+    const date = new Date(datetime);
+    return {
+      day: date.getDate(),
+      month: date.toLocaleString('en-US', { month: 'short' }),
+      time: date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }),
+      fullDate: date.toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+      }),
+    };
+  };
 
   useEffect(() => {
-    const upcomingEvents = EVENTS_DATA.filter((event) => new Date(event.date) >= new Date());
-    setEvents(upcomingEvents);
+    const fetchEvents = async () => {
+      try {
+        const response = await axios.get('https://brgyapp.lesterintheclouds.com/api/fetch_approved_programs.php');
+        if (response.data.status === 'success') {
+          const processedEvents = response.data.data
+            .map((event) => ({
+              ...event,
+              startFormatted: formatDateTime(event.start),
+              endFormatted: formatDateTime(event.end),
+            }))
+            .sort((a, b) => new Date(a.start) - new Date(b.start)); // Sort by start date
+
+          setAllEvents(processedEvents);
+          setEvents(processedEvents);
+        } else {
+          Alert.alert('Error', 'Failed to fetch events: ' + response.data.message);
+        }
+      } catch (error) {
+        console.error('Error fetching events:', error);
+        Alert.alert('Error', 'Failed to fetch events. Please try again later.');
+      }
+    };
+
+    fetchEvents();
   }, []);
 
   const handleDateSelect = (day) => {
     setSelectedDate(day.dateString);
-    const filteredEvents = EVENTS_DATA.filter((event) => event.date === day.dateString);
+    const filteredEvents = allEvents.filter((event) => {
+      const eventDate = event.start.split(' ')[0];
+      return eventDate === day.dateString;
+    });
     setEvents(filteredEvents);
   };
 
   const handleBackToDefault = () => {
     setSelectedDate('');
-    const upcomingEvents = EVENTS_DATA.filter((event) => new Date(event.date) >= new Date());
-    setEvents(upcomingEvents);
+    setEvents(allEvents);
   };
 
-  const markedDates = EVENTS_DATA.reduce((acc, event) => {
-    acc[event.date] = { marked: true, dotColor: '#7B0A0A' };
+  const markedDates = allEvents.reduce((acc, event) => {
+    const datePart = event.start.split(' ')[0];
+    if (datePart) {
+      acc[datePart] = { marked: true, dotColor: '#7B0A0A' };
+    }
     return acc;
   }, { [selectedDate || today]: { selected: true, selectedColor: '#7B0A0A' } });
 
   return (
     <ScrollView style={styles.container}>
-      {/* Calendar Section */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Calendar</Text>
         <Calendar
@@ -50,22 +84,14 @@ export default function EventsResidents({ navigation }) {
             selectedDayBackgroundColor: '#7B0A0A',
             todayTextColor: '#7B0A0A',
             arrowColor: '#7B0A0A',
-            textSectionTitleColor: '#3B3B3B',
             dayTextColor: '#3B3B3B',
             selectedDayTextColor: '#FFFFFF',
-            textDisabledColor: '#D9D9D9',
           }}
         />
       </View>
 
-      {/* Events List Section */}
       <View style={styles.card}>
-        <View style={styles.headerRow}>
-          <Text style={styles.cardTitle}>{selectedDate ? `Events on ${selectedDate}` : 'Upcoming Events'}</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('JoinEvents')}>
-            <Ionicons name="notifications-outline" size={28} color="#7B0A0A" />
-          </TouchableOpacity>
-        </View>
+        <Text style={styles.cardTitle}>{selectedDate ? `Events on ${selectedDate}` : 'Upcoming Events'}</Text>
 
         {selectedDate && (
           <TouchableOpacity style={styles.backButton} onPress={handleBackToDefault}>
@@ -75,22 +101,41 @@ export default function EventsResidents({ navigation }) {
 
         <FlatList
           data={events}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.eventCard}
-              onPress={() => navigation.navigate('EventOverview', { event: item })}
-            >
-              <Text style={styles.eventTitle}>{item.title}</Text>
-              <Text style={styles.eventText}>🕒 {item.time}</Text>
-              <Text style={styles.eventText}>📍 {item.location}</Text>
-              <Text style={styles.eventText}>👥 {item.participant}</Text>
-            </TouchableOpacity>
-          )}
-          ListEmptyComponent={
-            <Text style={styles.noEventText}>No events scheduled for this date.</Text>
-          }
-          scrollEnabled={false} // Allow ScrollView to handle scrolling
+          keyExtractor={(item) => item.id?.toString()}
+          renderItem={({ item }) => {
+            const isSameDate = item.startFormatted.fullDate === item.endFormatted.fullDate;
+
+            return (
+              <TouchableOpacity
+                style={styles.eventContainer}
+                onPress={() => navigation.navigate('EventOverview', { event: item })}
+              >
+                <View style={styles.dateContainer}>
+                  <Text style={styles.dateDay}>{item.startFormatted.day}</Text>
+                  <Text style={styles.dateMonth}>{item.startFormatted.month}</Text>
+                </View>
+                <View style={styles.detailsContainer}>
+                  <Text style={styles.eventTitle}>{item.title}</Text>
+                  <Text style={styles.eventDetail}>
+                    <Text style={styles.bold}>WHEN: </Text>
+                    {isSameDate
+                      ? `${item.startFormatted.fullDate}, ${item.startFormatted.time} - ${item.endFormatted.time}`
+                      : `${item.startFormatted.fullDate}, ${item.startFormatted.time} - ${item.endFormatted.fullDate}, ${item.endFormatted.time}`}
+                  </Text>
+                  <Text style={styles.eventDetail}>
+                    <Text style={styles.bold}>WHERE: </Text>
+                    {item.location}
+                  </Text>
+                  <Text style={styles.eventDetail}>
+                    <Text style={styles.bold}>STATUS: </Text>
+                    {item.status}
+                  </Text>
+                  <Text style={styles.seeDetails}>See details</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          }}
+          ListEmptyComponent={<Text style={styles.noEventText}>No events scheduled for this date.</Text>}
         />
       </View>
     </ScrollView>
@@ -99,18 +144,18 @@ export default function EventsResidents({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F4F4F4' },
-  card: { backgroundColor: '#FFFFFF', borderRadius: 10, padding: 15, marginVertical: 10, elevation: 3 },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  cardTitle: { fontSize: 18, fontWeight: 'bold', color: '#7B0A0A' },
+  card: { backgroundColor: '#FFFFFF', borderRadius: 10, padding: 15, marginVertical: 10 },
+  cardTitle: { fontSize: 18, fontWeight: 'bold', color: '#7B0A0A', marginBottom: 10 },
   backButton: { alignSelf: 'flex-start', marginBottom: 10, backgroundColor: '#7B0A0A', borderRadius: 5, padding: 5 },
   backButtonText: { color: '#FFFFFF', fontWeight: 'bold' },
-  eventCard: { backgroundColor: '#F3F1FF', padding: 15, marginVertical: 5, borderRadius: 8 },
-  eventTitle: { fontSize: 16, fontWeight: 'bold', color: '#333333' },
-  eventText: { fontSize: 14, color: '#555555' },
+  eventContainer: { flexDirection: 'row', backgroundColor: '#F3F1FF', borderRadius: 8, marginBottom: 10, padding: 10 },
+  dateContainer: { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 10 },
+  dateDay: { fontSize: 30, fontWeight: 'bold', color: '#7B0A0A' },
+  dateMonth: { fontSize: 16, color: '#7B0A0A' },
+  detailsContainer: { flex: 1, justifyContent: 'center' },
+  eventTitle: { fontSize: 16, fontWeight: 'bold', color: '#333333', marginBottom: 5 },
+  eventDetail: { fontSize: 14, color: '#555555', marginBottom: 3 },
+  bold: { fontWeight: 'bold', color: '#333333' },
+  seeDetails: { color: '#7B0A0A', fontWeight: 'bold', marginTop: 5 },
   noEventText: { textAlign: 'center', color: '#888888', fontSize: 16, marginTop: 10 },
 });
