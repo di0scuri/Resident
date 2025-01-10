@@ -27,7 +27,7 @@ $sql = "SELECT
             programId AS id, 
             programName AS name, 
             programType AS type, 
-            location, 
+            'location', 
             proposedBy, 
             committee, 
             startDate, 

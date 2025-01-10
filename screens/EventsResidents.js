@@ -27,20 +27,23 @@ export default function EventsResidents({ navigation }) {
   useEffect(() => {
     const fetchEvents = async () => {
       try {
-        const response = await axios.get('https://brgyapp.lesterintheclouds.com/api/fetch_approved_programs.php');
-        if (response.data.status === 'success') {
-          const processedEvents = response.data.data
+        const response = await axios.get('https://brgyapp.lesterintheclouds.com/get_programs.php');
+        if (Array.isArray(response.data)) {
+          const now = new Date(); // Current date and time
+          const processedEvents = response.data
             .map((event) => ({
               ...event,
-              startFormatted: formatDateTime(event.start),
-              endFormatted: formatDateTime(event.end),
+              startDate: new Date(event.startDate), // Parse startDate as Date object
+              endDate: new Date(event.endDate), // Parse endDate as Date object
+              startFormatted: formatDateTime(event.startDate),
+              endFormatted: formatDateTime(event.endDate),
             }))
-            .sort((a, b) => new Date(a.start) - new Date(b.start)); // Sort by start date
-
+            .filter((event) => event.startDate >= now) // Filter out past events
+            .sort((a, b) => a.startDate - b.startDate); // Sort by startDate in ascending order
           setAllEvents(processedEvents);
           setEvents(processedEvents);
         } else {
-          Alert.alert('Error', 'Failed to fetch events: ' + response.data.message);
+          Alert.alert('Error', 'Invalid API response format.');
         }
       } catch (error) {
         console.error('Error fetching events:', error);
@@ -54,8 +57,12 @@ export default function EventsResidents({ navigation }) {
   const handleDateSelect = (day) => {
     setSelectedDate(day.dateString);
     const filteredEvents = allEvents.filter((event) => {
-      const eventDate = event.start.split(' ')[0];
-      return eventDate === day.dateString;
+      if (event.startDate instanceof Date && !isNaN(event.startDate)) {
+        const eventDate = event.startDate.toISOString().split('T')[0];
+        return eventDate === day.dateString;
+      }
+      console.warn(`Invalid startDate for event:`, event);
+      return false;
     });
     setEvents(filteredEvents);
   };
@@ -66,9 +73,11 @@ export default function EventsResidents({ navigation }) {
   };
 
   const markedDates = allEvents.reduce((acc, event) => {
-    const datePart = event.start.split(' ')[0];
-    if (datePart) {
+    if (event.startDate instanceof Date && !isNaN(event.startDate)) {
+      const datePart = event.startDate.toISOString().split('T')[0];
       acc[datePart] = { marked: true, dotColor: '#7B0A0A' };
+    } else {
+      console.warn(`Invalid startDate for marking:`, event);
     }
     return acc;
   }, { [selectedDate || today]: { selected: true, selectedColor: '#7B0A0A' } });
@@ -101,7 +110,7 @@ export default function EventsResidents({ navigation }) {
 
         <FlatList
           data={events}
-          keyExtractor={(item) => item.id?.toString()}
+          keyExtractor={(item) => item.programId.toString()}
           renderItem={({ item }) => {
             const isSameDate = item.startFormatted.fullDate === item.endFormatted.fullDate;
 
@@ -115,7 +124,7 @@ export default function EventsResidents({ navigation }) {
                   <Text style={styles.dateMonth}>{item.startFormatted.month}</Text>
                 </View>
                 <View style={styles.detailsContainer}>
-                  <Text style={styles.eventTitle}>{item.title}</Text>
+                  <Text style={styles.eventTitle}>{item.programName}</Text>
                   <Text style={styles.eventDetail}>
                     <Text style={styles.bold}>WHEN: </Text>
                     {isSameDate
